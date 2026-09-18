@@ -1,0 +1,6 @@
+﻿creditcard.csv
+Credit Card Fraud Detection - Classification_backup.ipynb
+.ipynb_checkpoints/
+__pycache__/
+.venv/
+venv/
