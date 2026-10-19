@@ -1,202 +1,284 @@
+
 # Credit Card Fraud Detection: Classification & Imbalance Benchmarking
 
-An end-to-end Machine Learning and Data Analytics study evaluating classification models, class imbalance mitigation techniques, and decision-threshold trade-offs on highly skewed credit card transaction data.
+An end-to-end machine learning project comparing classification models and class-imbalance techniques for detecting fraudulent credit card transactions. The project focuses on model evaluation, precision-recall trade-offs, and decision-threshold selection.
 
 ---
 
 ## 1. Project Overview & Problem Statement
 
-Credit card fraud represents an asymmetric risk problem: fraudulent transactions are rare but cause severe direct financial losses, while legitimate transactions form the vast majority of volume. Automated fraud classification models must accurately flag fraudulent activity without overwhelming operational review teams with false alarms or creating unnecessary friction for legitimate cardholders.
+Credit card fraud detection is a challenging classification problem because fraudulent transactions represent only a tiny fraction of all transactions. A useful model must identify fraud while minimizing false alarms on legitimate transactions.
 
-This project investigates binary fraud classification on the standard Kaggle European cardholder dataset. It establishes a leak-free machine learning workflow, examines class separation across latent PCA features, benchmarks three distinct classifier families across three class-imbalance paradigms, and evaluates decision-threshold dynamics.
-
----
+This project benchmarks three machine learning classifiers across three class-imbalance strategies, evaluates their performance on validation data, and performs a final evaluation using a separate held-out test set.
 
 ## 2. Dataset Overview
 
-- **Source**: Kaggle European cardholder dataset (September 2013).
-- **Total Transactions**: 284,807 transactions recorded over a 48-hour period.
-- **Class Breakdown**:
-  - **Legitimate (Class 0)**: 284,315 transactions (99.828%)
-  - **Fraudulent (Class 1)**: 492 transactions (0.172%)
-  - **Imbalance Ratio**: Approximately 1 fraud per 578 legitimate transactions.
-- **Features**:
-  - `V1` to `V28`: 28 numerical features obtained through Principal Component Analysis (PCA) due to confidentiality constraints.
-  - `Time`: Elapsed seconds between each transaction and the first transaction in the dataset.
-  - `Amount`: Transaction monetary amount in euros.
-  - `Class`: Response variable (1 for fraud, 0 for legitimate).
+- **Source**: [Kaggle Credit Card Fraud Detection Dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud).
+- **Total transactions**: 284,807.
+- **Legitimate transactions (Class 0)**: 284,315 (99.828%).
+- **Fraudulent transactions (Class 1)**: 492 (0.172%).
+- **Imbalance ratio**: Approximately 578 legitimate transactions per fraudulent transaction.
+
+### Features
+
+- `V1` to `V28`: Anonymized numerical features obtained through PCA.
+- `Time`: Elapsed seconds between a transaction and the first transaction in the dataset.
+- `Amount`: Transaction amount as recorded in the dataset; the documentation does not explicitly specify the currency.
+- `Class`: Target variable, where 1 indicates fraud and 0 indicates a legitimate transaction.
 
 ---
 
 ## 3. Key Challenge: Extreme Class Imbalance
 
-With fraud occurring in only 0.172% of transactions, standard machine learning pipelines face specific pitfalls:
-- **Trivial Accuracy**: A naive classifier predicting all transactions as legitimate achieves **99.828% accuracy**, rendering accuracy meaningless.
-- **ROC-AUC Distortion**: Standard ROC-AUC curves can appear deceptively high because the enormous pool of true negatives ($>71,000$ in testing) compresses the False Positive Rate ($\text{FPR} = \frac{\text{FP}}{\text{FP} + \text{TN}}$).
-- **Need for Precision-Recall Rigor**: The **Area Under the Precision-Recall Curve (PR-AUC / Average Precision)** is the primary evaluation metric because it focuses strictly on the minority class trade-off between caught frauds (Recall) and false alarms (Precision).
+Fraudulent transactions account for only 0.172% of the dataset, making accuracy alone an unreliable measure of model performance.
+
+- **Misleading accuracy**: A classifier predicting every transaction as legitimate would achieve approximately 99.828% accuracy while detecting no fraud.
+- **Precision and recall trade-off**: Increasing the number of detected fraud cases can also increase false positives.
+- **PR-AUC**: Precision-Recall AUC is especially useful for assessing performance on the minority fraud class.
+- **ROC-AUC**: Provides a complementary measure of the model's ability to distinguish between legitimate and fraudulent transactions.
 
 ---
 
 ## 4. Technologies Used
 
-- **Language**: Python 3.12
-- **Data Manipulation & Analysis**: NumPy (2.5.3), Pandas (3.0.6)
-- **Machine Learning**: Scikit-Learn (1.9.1), XGBoost (3.4.1)
-- **Class Imbalance Handling**: Imbalanced-Learn (`imblearn` 0.14.2)
-- **Data Visualization**: Matplotlib (3.11.2), Seaborn (0.13.2)
-- **Environment**: Jupyter Notebook
+- **Language**: Python
+- **Data manipulation**: NumPy, Pandas
+- **Machine learning**: Scikit-learn, XGBoost
+- **Imbalanced data handling**: Imbalanced-learn (SMOTE)
+- **Visualization**: Matplotlib, Seaborn
+- **Environment**: Jupyter Notebook / VS Code
 
 ---
 
 ## 5. Exploratory Data Analysis (EDA)
 
-The exploratory analysis focuses on class-conditioned distributions rather than unsegmented population averages:
+The exploratory analysis examines class distribution, transaction amounts, and feature relationships.
 
-1. **Class Distribution Quantification**:
-   - Visualized target class distribution on a logarithmic scale, highlighting the 1:578 imbalance ratio.
-2. **Transaction Amount Comparison**:
-   - **Legitimate**: Mean = \$88.29, Median = \$22.00, 75th Percentile = \$77.05, Max = \$25,691.16.
-   - **Fraudulent**: Mean = \$122.21, Median = \$9.25, 75th Percentile = \$105.89, Max = \$2,125.87.
-   - Fraudulent transactions exhibit a smaller median amount but frequent clusters around specific values, while normal transactions exhibit a heavy right-tail of large purchases.
-3. **Temporal Dynamics (`Hour_of_Day`)**:
-   - Converted cumulative `Time` into cyclical 24-hour intervals (`Hour`).
-   - Normal transactions follow typical diurnal activity, dropping substantially during night hours.
-   - Fraud transactions show elevated relative density during off-peak and early morning hours (00:00 to 06:00).
-4. **Target Correlation & Discriminative Feature Divergence**:
-   - Identified the features most correlated with fraud:
-     - Negative correlation: $V_{17}$ (-0.326), $V_{14}$ (-0.303), $V_{12}$ (-0.261), $V_{10}$ (-0.217).
-     - Positive correlation: $V_{11}$ (+0.155), $V_4$ (+0.134).
-   - Overlaid KDE density plots confirmed substantial class separation on $V_{14}, V_{17}, V_{12},$ and $V_{10}$.
+1. **Class distribution**:
+   - Analyzed the distribution of legitimate and fraudulent transactions.
+   - Identified the approximately 578:1 class imbalance.
+
+2. **Transaction amount comparison**:
+   - **Legitimate**: Mean = 88.29, median = 22.00, 75th percentile = 77.05, maximum = 25,691.16.
+   - **Fraudulent**: Mean = 122.21, median = 9.25, 75th percentile = 105.89, maximum = 2,125.87.
+   - Fraudulent transactions have a smaller median transaction amount than legitimate transactions in this dataset.
+
+3. **Temporal feature handling**:
+   - `Time` represents elapsed seconds since the first transaction, not actual clock time.
+   - The derived `Hour` feature was excluded because it does not reliably represent the actual hour of day.
+   - No conclusions about diurnal fraud patterns are drawn from these features.
+
+4. **Feature relationships**:
+   - Analyzed relationships between numerical features and the fraud target.
+   - Observed class separation in features including `V14`, `V17`, `V12`, and `V10`.
 
 ---
 
 ## 6. Feature Engineering & Preprocessing
 
-### Empirical Feature Engineering
-- **`Hour` Extraction**: Derived $Hour = (\text{Time} // 3600) \pmod{24}$ to capture diurnal timing.
-- **Pruning Raw Time**: Dropped raw cumulative seconds (`Time`) to eliminate dependence on an arbitrary recording start epoch.
+### Feature Selection
 
-### Methodological Preprocessing (Zero Data Leakage)
-1. **Split Prior to Scaling**:
-   - Split dataset into **75% Training** ($N = 213,605$, 369 frauds) and **25% Testing** ($N = 71,202$, 123 frauds).
-   - Enforced stratified sampling (`stratify=y`) with a fixed seed (`random_state=42`) to guarantee identical class ratios across splits.
-2. **Train-Only Parameter Fitting**:
-   - `RobustScaler` was fitted strictly on `X_train` and then used to transform both `X_train` and `X_test`.
-   - Guaranteed zero parameter leakage from the test distribution.
+- Used `V1` to `V28` and `Amount` as model features, for a total of 29 features.
+- Excluded `Time` and the derived `Hour` feature from model training.
+
+### Stratified Train-Validation-Test Split
+
+The dataset was divided into three partitions using stratified sampling and `random_state=42`.
+
+| Partition | Transactions | Fraudulent transactions |
+|---|---:|---:|
+| Training | 170,883 | 295 |
+| Validation | 56,962 | 99 |
+| Testing | 56,962 | 98 |
+
+### Preprocessing and Leakage Prevention
+
+- Fitted `RobustScaler` exclusively on the training data.
+- Applied the fitted scaler to the validation and test sets without refitting.
+- Compared model configurations using validation-set metrics.
+- Selected the model using validation PR-AUC and selected the decision threshold using validation F1-score.
+- Reserved the test set for the final evaluation after model and threshold selection.
 
 ---
 
 ## 7. Model Architectures & Imbalance Handling Strategies
 
 ### Model Architectures
-- **Logistic Regression**: Linear baseline providing interpretable log-odds coefficients and rapid inference.
-- **Random Forest**: Bagging ensemble (100 estimators) capturing non-linear interactions and resilient to outliers.
-- **XGBoost**: Gradient-boosted decision trees (GBDT, 100 estimators) sequentially optimizing logistic loss.
+
+- **Logistic Regression**: Linear classification model used as a baseline.
+- **Random Forest**: Ensemble of 100 decision trees that captures nonlinear relationships.
+- **XGBoost**: Gradient-boosted decision trees using 100 estimators.
 
 ### Imbalance Handling Paradigms
-1. **Baseline**: Trained directly on raw, unweighted training data.
-2. **Cost-Sensitive / Class-Weighted**: Algorithmic penalty weighting:
+
+Three approaches were evaluated to address the extreme class imbalance.
+
+1. **Baseline**
+   - Models trained on the original, unweighted training data.
+   - No resampling or class-specific weighting was applied.
+
+2. **Cost-Sensitive / Class-Weighted**
    - Logistic Regression: `class_weight='balanced'`
    - Random Forest: `class_weight='balanced'`
-   - XGBoost: `scale_pos_weight = 577.88` (computed from training negative-to-positive ratio)
-3. **SMOTE (Synthetic Minority Oversampling)**:
-   - Applied **strictly to the training fold** (`X_train_scaled`, rebalancing to 213,236 frauds vs. 213,236 legitimate samples).
-   - The test set remained completely unmodified (0.172% fraud rate) to preserve valid real-world evaluation.
+   - XGBoost: `scale_pos_weight = 578.26`, calculated from the training set's negative-to-positive class ratio.
+
+3. **SMOTE (Synthetic Minority Oversampling)**
+   - Applied exclusively to the training data.
+   - Increased the training set from 170,883 transactions to 341,176 resampled transactions.
+   - The resulting resampled training data contained 170,588 samples in each class.
+   - Validation and test sets were left untouched by SMOTE.
 
 ---
 
 ## 8. Evaluation Metrics
 
-Because the test partition contains 71,079 legitimate cases and only 123 frauds, models were evaluated on:
-- **Precision**: Proportion of flagged transactions that were actually fraudulent ($\frac{\text{TP}}{\text{TP} + \text{FP}}$).
-- **Recall**: Proportion of actual fraudulent transactions successfully identified ($\frac{\text{TP}}{\text{TP} + \text{FN}}$).
-- **F1-Score**: Harmonic mean of Precision and Recall.
-- **PR-AUC (Average Precision)**: Summary metric measuring precision across all recall thresholds; primary metric for imbalanced data.
-- **ROC-AUC**: Standard discrimination metric across all false-positive rate thresholds.
+The held-out test set contains 56,864 legitimate transactions and 98 fraudulent transactions.
+
+The project uses the following evaluation metrics:
+
+- **Precision**: Proportion of transactions flagged as fraud that were actually fraudulent.
+- **Recall**: Proportion of actual fraudulent transactions identified by the model.
+- **F1-score**: Harmonic mean of precision and recall.
+- **PR-AUC (Average Precision)**: Summarizes precision-recall performance across different classification thresholds.
+- **ROC-AUC**: Measures the model's ability to distinguish between the two classes across classification thresholds.
+
+PR-AUC is emphasized because of the dataset's extreme class imbalance.
 
 ---
 
 ## 9. Experimental Benchmark Results
 
-All 9 configurations were evaluated on the identical unseen test set ($N = 71,202$ total, $123$ frauds):
+Nine model configurations were evaluated using three classifiers and three imbalance-handling strategies.
 
-| Rank | Model | Imbalance Strategy | Precision | Recall | F1-Score | PR-AUC | ROC-AUC |
-| :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| 1 | **XGBoost** | **SMOTE** | **0.8175** | **0.8374** | **0.8273** | **0.8646** | **0.9823** |
-| 2 | **XGBoost** | **Class-Weighted** | 0.8839 | 0.8049 | 0.8426 | 0.8617 | 0.9798 |
-| 3 | **Random Forest** | **SMOTE** | 0.8772 | 0.8130 | 0.8439 | 0.8564 | 0.9660 |
-| 4 | **Random Forest** | **Class-Weighted** | 0.9314 | 0.7724 | 0.8444 | 0.8476 | 0.9610 |
-| 5 | **Random Forest** | **Baseline** | 0.9515 | 0.7967 | 0.8673 | 0.8437 | 0.9415 |
-| 6 | **Logistic Regression** | **Baseline** | 0.8462 | 0.6260 | 0.7196 | 0.7205 | 0.9635 |
-| 7 | **Logistic Regression** | **SMOTE** | 0.0569 | 0.8943 | 0.1070 | 0.7120 | 0.9734 |
-| 8 | **Logistic Regression** | **Class-Weighted** | 0.0597 | 0.8862 | 0.1119 | 0.7055 | 0.9736 |
-| 9 | **XGBoost** | **Baseline** | 0.1211 | 0.1870 | 0.1470 | 0.0531 | 0.4301 |
+### Model Selection
+
+- **Selected model**: XGBoost with SMOTE.
+- **Selection criterion**: Highest validation PR-AUC among the nine evaluated configurations.
+- **Validation PR-AUC**: 0.8087.
+- **Selected decision threshold**: 0.9906, chosen using validation data to maximize F1-score.
+
+### Final Held-Out Test Results
+
+The selected model was evaluated on the independent test set using the validation-selected threshold.
+
+| Metric | Final test result |
+|---|---:|
+| Precision | 0.9259 |
+| Recall | 0.7653 |
+| F1-score | 0.8380 |
+| PR-AUC | 0.8623 |
+| ROC-AUC | 0.9814 |
+
+Precision, recall, and F1-score reflect predictions at the selected threshold. PR-AUC and ROC-AUC evaluate discrimination across thresholds.
+
+### Selected Validation Comparisons
+
+The following results illustrate differences between class-weighted and SMOTE-based approaches.
+
+| Model | Strategy | Precision | Recall | F1-score | PR-AUC | ROC-AUC |
+|---|---|---:|---:|---:|---:|---:|
+| XGBoost | SMOTE | 0.7600 | 0.7677 | 0.7638 | 0.8087 | 0.9675 |
+| XGBoost | Class-weighted | 0.9167 | 0.7778 | 0.8415 | 0.8069 | 0.9671 |
+| Random Forest | SMOTE | 0.8652 | 0.7778 | 0.8191 | 0.7975 | 0.9567 |
+| Random Forest | Class-weighted | 0.8916 | 0.7475 | 0.8132 | 0.7951 | 0.9463 |
+| Logistic Regression | Class-weighted | 0.0571 | 0.8990 | 0.1074 | 0.6826 | 0.9758 |
+| Logistic Regression | SMOTE | 0.0589 | 0.8788 | 0.1104 | 0.6751 | 0.9724 |
+
+The table presents the six class-weighted and SMOTE configurations for which validation results are summarized here. The three baseline configurations were also evaluated; their results can be inspected in the notebook.
 
 ---
 
 ## 10. Key Empirical Findings
 
-1. **Tree-Based Resilience & Separation**:
-   - Both **XGBoost** and **Random Forest** achieved strong minority-class separation, recording PR-AUC scores between **0.843** and **0.865**.
-2. **The SMOTE / Weighting Dilemma on Linear Models**:
-   - For **Logistic Regression**, applying SMOTE or Class Weighting increased recall from $62.6\%$ to $\sim 89\%$, but caused a **severe collapse in precision** (dropping from $84.6\%$ down to $5.7\% - 6.0\%$). In an operational setting, this produces approximately 16 false alarms for every confirmed fraud case.
-3. **Empirical Behavior of Baseline XGBoost**:
-   - The unweighted default XGBoost configuration performed poorly on this dataset (PR-AUC 0.0531, ROC-AUC 0.4301) under the extreme 0.172% fraud rate. Diagnostic analysis indicated unstable tree-weight updates with the default unconstrained max_delta_step=0, while class weighting and SMOTE produced substantially stronger results.
-4. **Primary Fraud Risk Predictors**:
-   - Feature importance from the selected XGBoost + SMOTE model indicated that fraud predictions were predominantly driven by latent components:
-     1. $V_{14}$ ($60.65\%$)
-     2. $V_4$ ($6.60\%$)
-     3. $V_{12}$ ($2.90\%$)
-     4. $V_{10}$ ($2.68\%$)
-     5. $V_8$ ($2.43\%$)
+1. **Model selection**:
+   - XGBoost with SMOTE achieved the highest validation PR-AUC among the nine configurations, at 0.8087.
+   - XGBoost with class weighting achieved a similar validation PR-AUC of 0.8069.
+   - Model selection was based on validation PR-AUC, followed by threshold selection using validation F1-score.
+
+2. **Class weighting and SMOTE trade-offs**:
+   - Class-weighted Logistic Regression achieved validation recall of 0.8990 but precision of only 0.0571.
+   - SMOTE-based Logistic Regression achieved validation recall of 0.8788 but precision of only 0.0589.
+   - These results show that high recall alone does not guarantee an effective fraud-detection system because false positives also matter.
+
+3. **Final test performance**:
+   - At the selected threshold of 0.9906, XGBoost with SMOTE achieved test precision of 0.9259, recall of 0.7653, and F1-score of 0.8380.
+   - The model correctly identified 75 of the 98 fraudulent transactions in the test set, while incorrectly flagging 6 legitimate transactions.
+
+4. **Evaluation limitations**:
+   - Results are based on one stratified random train-validation-test split.
+   - The dataset covers a limited period and may not represent evolving fraud patterns.
+   - Threshold selection based on F1-score does not necessarily minimize real-world financial losses or operational costs.
 
 ---
 
 ## 11. Confusion Matrix & Decision-Threshold Analysis
 
-### Operational Confusion Matrix (Top Model: XGBoost + SMOTE)
-At the default $0.50$ decision threshold on the test set:
-- **True Negatives (Legitimate Cleared)**: 71,056 / 71,079
-- **False Positives (False Alarms)**: 23
-- **False Negatives (Missed Frauds)**: 20
-- **True Positives (Frauds Prevented)**: 103 / 123 ($83.7\%$ fraud capture rate)
+### Final Test Confusion Matrix
 
-### Analytical vs. Operational Threshold Selection
-- A sweep across classification thresholds from $0.05$ to $0.95$ identified **$0.81$** as the analytical threshold that maximizes F1-Score:
-  - **At Threshold 0.81**: Precision = $0.9182$, Recall = $0.8211$, F1 = $0.8670$.
-- **Operational Reality**: In real-world financial risk management, the decision boundary is tuned based on cost asymmetry rather than pure mathematical F1 optimization:
-  - *Lowering the threshold* increases Recall (preventing high-dollar financial theft) at the expense of higher manual review queue volume.
-  - *Raising the threshold* reduces customer friction (false declines) but tolerates higher fraud loss.
+The selected XGBoost + SMOTE model was evaluated at the threshold of `0.9906` selected using validation data.
+
+| | Predicted legitimate | Predicted fraud |
+|---|---:|---:|
+| Actual legitimate | 56,858 | 6 |
+| Actual fraud | 23 | 75 |
+
+### Operational Breakdown
+
+- **True Negatives**: 56,858 legitimate transactions correctly identified.
+- **False Positives**: 6 legitimate transactions incorrectly flagged as fraud.
+- **False Negatives**: 23 fraudulent transactions missed by the model.
+- **True Positives**: 75 fraudulent transactions correctly identified.
+
+### Threshold Selection
+
+- Candidate thresholds were evaluated using validation-set probabilities.
+- The threshold of `0.9906` was selected to maximize validation F1-score.
+- The held-out test set was used for final evaluation after model and threshold selection.
+
+### Practical Trade-Off
+
+- Lowering the decision threshold generally increases recall but may also increase false alarms.
+- Raising the threshold may improve precision while allowing more fraud to go undetected.
+- A production fraud-detection system should consider fraud losses, investigation costs, and customer friction when choosing an operational threshold.
 
 ---
 
 ## 12. How to Run the Project
 
 ### Prerequisites
-- Python 3.10+ (tested on Python 3.12)
-- Jupyter Notebook or VS Code with Jupyter extension
+
+- Python 3.10 or newer
+- Jupyter Notebook or VS Code with the Jupyter extension
 
 ### Setup Instructions
-1. **Clone the Repository**:
+
+1. **Clone the repository**:
+
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Ritvik440/credit-card-fraud-detection.git
    cd credit-card-fraud-detection
    ```
-2. **Install Required Packages**:
+
+2. **Install the required packages**:
+
    ```bash
    pip install numpy pandas scikit-learn xgboost imbalanced-learn matplotlib seaborn
    ```
-3. **Place the Dataset**:
+
+3. **Download the dataset**:
    - Download `creditcard.csv` from [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud).
-   - Place `creditcard.csv` in the root project directory.
-   *(Note: `creditcard.csv` is ~150 MB and should not be committed directly to GitHub).*
-4. **Run the Notebook**:
-   - Open and execute `Credit Card Fraud Detection - Classification.ipynb` sequentially from beginning to end.
+   - Place the CSV file in the notebook's working directory.
+   - The dataset is approximately 150 MB and should not be committed directly to GitHub.
+
+4. **Run the notebook**:
+   - Open `Credit Card Fraud Detection - Revised.ipynb`.
+   - Execute the notebook cells sequentially from beginning to end.
 
 ---
 
 ## 13. Project Limitations & Future Improvements
 
-- **Anonymized PCA Features**: Because features $V_1$ to $V_{28}$ are anonymized PCA projections, domain-specific features (such as merchant category codes, device fingerprints, transaction geographic distance, and user historical velocities) cannot be engineered.
-- **Static Train-Test Partition**: The dataset reflects 48 hours of transactions. A time-based sequential validation scheme over extended months would better assess concept drift and evolving fraud patterns.
-- **Hyperparameter Optimization**: Models were evaluated using fixed tree counts and standard configurations to ensure uniform benchmarking across imbalance strategies; Bayesian optimization or systematic grid search could further refine performance.
+- **Anonymized PCA features**: The anonymized features `V1` to `V28` limit domain-specific feature engineering.
+- **Static random train-validation-test split**: The dataset covers approximately 48 hours of transactions. A time-based evaluation using longer-period transaction data would better assess changing fraud patterns.
+- **Hyperparameter optimization**: The current experiments use fixed model configurations. Grid search or Bayesian optimization could help explore better-performing configurations.
+- **Operational threshold selection**: Future work could incorporate explicit costs for missed fraud, false alarms, and manual investigation to choose a threshold based on business requirements.
